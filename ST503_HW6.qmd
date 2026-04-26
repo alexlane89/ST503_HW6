@@ -1,0 +1,183 @@
+---
+title: ST503 Section 601 Homework 6
+author: Charles Lane
+format:
+  pdf:
+    mainfont: "Times New Roman"
+---
+
+Installation of necessary R packages:
+
+```{r}
+#| warning: false
+library('tidyverse')
+library('faraway')
+library('lmtest')
+library('rpart')
+library('emmeans')
+```
+****
+{{< pagebreak >}} 
+
+## 1) Exercise 15.6 on page 233-234 of LMR
+Data on the butterfat content of milk from Canadian cows of five different breeds can be found in the 'butterfat' dataset. Consider only mature cows.
+
+### a) Plot the data and interpret what you see.
+```{r}
+butterfat$Age <- as.factor(butterfat$Age)
+butterfat$Breed <- as.factor(butterfat$Breed)
+
+b.p <- ggplot(data = subset(butterfat, Age == "Mature"), 
+              aes(x = Breed, y = Butterfat))
+
+b.p + 
+  geom_boxplot() + 
+  labs(title = "Butterfat vs Breed for Mature Cows")
+```
+The plot above appears to show an effect on Butterfat content from certain breeds, namely Jersey and Guernsey cows in the positive direction, and Holstein-Fresian cows in the negative direction.
+
+### b) Test for a difference between the breeds.
+```{r}
+new_bf <- subset(butterfat, Age == "Mature")
+
+lm.bf <- lm(Butterfat ~ Breed, data = new_bf)
+bf1 <- aov(Butterfat ~ Breed, data = new_bf)
+summary(bf1)
+```
+The results of the Analysis of Variance model show that there is a statistically significant difference between the various breeds, but what it does not communicate is which breed pair-wise combinations are statistically significant.
+
+
+### c) Check the diagnostics for your model.
+```{r}
+qqnorm(residuals(lm.bf))
+qqline(residuals(lm.bf))
+plot(jitter(fitted(lm.bf)), 
+     residuals(lm.bf), 
+     xlab = "Fitted", 
+     ylab = "Residuals")
+abline(h = 0)
+```
+Both the normality assumption (Q-Q Plot) and the homogeneous error variance (residuals vs Fitted) assumptions appear to be in question. Further testing is below:
+```{r}
+#Normality of residuals assumption test using Shapiro-Wilk test
+shapiro.test(residuals(lm.bf))
+```
+Based on the Shapiro-Wilk result, which is just above the $\alpha$ = 0.05 significant test, the dataset does conform with normality assumptions.
+
+```{r}
+#Constant Error Variance assumption test using Breusch-Pagan
+bptest(lm.bf)
+```
+The Breusch-Pagan test results do not indicate a rejection of the null hypothesis, and thus not indicating the homogeneous error variance assumption is violated for this dataset.
+
+### d) Produce a plot to check for differences in butterfat between breeds. Which pairwise differences are not statistically significant?
+```{r}
+plot(tukey.bf)
+TukeyHSD(bf1)
+```
+Based on the plot above, and the Tukey comparison of all pairwise combinations, all pairwise comparisons are significantly different except for 2:
+
+1. Canadian-Ayrshire
+2. Jersey-Guernsey
+
+## 2) A study was conducted to compare 3 treatments for patients with HIV. The response was a measure of change in CD4+ counts. There were n = 90 patients in each of the 3 treatment conditions. The sample means and MSE are given below, note that positive responses implying increasing counts (good) and negative responses imply decreasing counts (bad).
+
+$$\bar{Y}_{1\cdot} = 12.2$$
+$$\bar{Y}_{2\cdot} = 5.1$$
+$$\bar{Y}_{3\cdot} = -0.3$$
+$$MSE = 400$$
+
+### a) Fill in an ANOVA table. Give the conclusion based on the F-test.
+```{r}
+n_i <- 90
+I <- 3
+df_r <- I-1
+df_e <- (n_i*I) - I
+df_t <- (n_i*I) - 1
+y_1 <- 12.2
+y_2 <- 5.1
+y_3 <- -0.3
+y_g <- sum(y_1, y_2, y_3)/3
+MSE <- 400
+
+SSR <- n_i*(y_1 - y_g)^2 + n_i*(y_2 - y_g)^2 + n_i*(y_3 - y_g)^2
+MSR <- SSR/(df_r)
+SSE <- MSE*df_e
+SST <- SSR + SSE
+F_stat <- MSR/MSE
+print(paste("regression degrees of freedom = ", df_r))
+print(paste("Error degrees of freedom = ", df_e))
+print(paste("Total degrees of freedom = ", df_t))
+print(paste("Regression Sum of Squares = ", SSR))
+print(paste("Error Sum of Squares = ", SSE))
+print(paste("Total Sum of Squares = ",SST))
+print(paste("MSR = ",MSR))
+print(paste("MSE = ",MSE))
+print(paste("F Observed Statistic = ",F_stat))
+```
+
+| Source  |   df   | Sum of Squares | Mean Squares | F-Statistic |
+|---------|--------|----------------|--------------|-------------|
+|   Reg   |    2   |     7074.6     |    3537.3    |   8.84325   |
+|  Error  |   267  |     106800     |      400     |             |
+|  Total  |   269  |    113874.6    |              |             |
+
+```{r}
+F_critical <- qf(0.95, df_r, df_e) # significance level of 0.05
+HIV_p <- pf(F_stat, df_r, df_e, lower.tail = FALSE)
+print(paste("Critical F-statistic = ",F_critical))
+print(paste("p-value = ",HIV_p))
+```
+
+Based on the comparison between the critical & observed F-statistics, and the resulting p-value, the null hypothesis may be rejected at $\alpha$ = 0.05. The null hypothesis states there is no difference in group means. We may assume there are significant differences between at least some portion of group means for this dataset.
+
+### b) Compute simultaneous 95% CIs for difference between all pairs of treatments, based on Tukey’s, and Bonferroni’s methods.
+```{r}
+# Tukey's
+q_crit <- qtukey(p = 0.95, nmeans = 3, df = df_e)/sqrt(2)
+t.comp12 <- c((y_1 - y_2) - q_crit*hiv_se, 
+              (y_1 - y_2) + q_crit*hiv_se)
+t.comp23 <- c((y_2 - y_3) - q_crit*hiv_se, 
+              (y_2 - y_3) + q_crit*hiv_se)
+t.comp13 <- c((y_1 - y_3) - q_crit*hiv_se, 
+              (y_1 - y_3) + q_crit*hiv_se)
+print(paste("Tukey's CI for Treatments 1 vs 2 = ",t.comp12))
+print(paste("Tukey's CI for Treatments 2 vs 3 = ",t.comp23))
+print(paste("Tukey's CI for Treatments 1 vs 3 = ",t.comp13))
+```
+For the Tukey's calculation, the 95% CI for pairwise comparisons 1 vs 2 and 1 vs 3 do not include 0, indicating there is significant difference between the treatments 1 vs 2 & 2 vs 3.
+
+```{r}
+# Bonferroni - 3 Levels of treatment, 3 possible pairwise comparisons
+J = 3
+bonf_alpha <- 1 - ((1 - 0.05)^(1/J))
+hiv_se <- sqrt(MSE)*sqrt(2/n_i)
+t_crit <- qt(p = 1 - bonf_alpha/2, df_e)
+b.comp12 <- c((y_1 - y_2) - t_crit*hiv_se, 
+              (y_1 - y_2) + t_crit*hiv_se)
+b.comp23 <- c((y_2 - y_3) - t_crit*hiv_se, 
+              (y_2 - y_3) + t_crit*hiv_se)
+b.comp13 <- c((y_1 - y_3) - t_crit*hiv_se, 
+              (y_1 - y_3) + t_crit*hiv_se)
+print(paste("Bonferroni CI for Treatments 1 vs 2 = ",b.comp12))
+print(paste("Bonferroni CI for Treatments 2 vs 3 = ",b.comp23))
+print(paste("Bonferroni CI for Treatments 1 vs 3 = ",b.comp13))
+```
+For the Bonferroni calculation, the 95% CI for pairwise comparison 1 vs 3 does not include 0, indicating there is significant difference between these treatments 1 & 3 only.
+
+### c) Carry out a test of contrast comparing the first two treatment with the last treatment.
+```{r}
+h_contrasts <- c(0.5, 0.5, -1)
+h_means <- c(y_1, y_2, y_3)
+cont_est <- sum(h_contrasts*h_means)
+cont_se <- sqrt(MSE * sum((h_contrasts^2) / n_i))
+t.stat <- cont_est/cont_se
+cont_h_p <- 2 * pt(abs(t.stat), df = df_e, lower.tail = FALSE)
+print(paste("Contrast Estimate = ",cont_est))
+print(paste("T-Statistic = ",t.stat))
+print(paste("p-value",cont_h_p))
+```
+
+With a p-value < $\alpha$ = 0.05, the null hypothesis may be rejected. This implies the group mean for the average of treatments 1 & 2 is significantly different from the group mean for treatment 3.
+
+## 3)
