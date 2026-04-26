@@ -72,7 +72,7 @@ The Breusch-Pagan test results do not indicate a rejection of the null hypothesi
 
 ### d) Produce a plot to check for differences in butterfat between breeds. Which pairwise differences are not statistically significant?
 ```{r}
-plot(tukey.bf)
+plot(TukeyHSD(bf1))
 TukeyHSD(bf1)
 ```
 Based on the plot above, and the Tukey comparison of all pairwise combinations, all pairwise comparisons are significantly different except for 2:
