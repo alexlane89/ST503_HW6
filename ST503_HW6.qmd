@@ -72,13 +72,16 @@ The Breusch-Pagan test results do not indicate a rejection of the null hypothesi
 
 ### d) Produce a plot to check for differences in butterfat between breeds. Which pairwise differences are not statistically significant?
 ```{r}
-plot(TukeyHSD(bf1))
+plot(TukeyHSD((bf1)))
 TukeyHSD(bf1)
 ```
 Based on the plot above, and the Tukey comparison of all pairwise combinations, all pairwise comparisons are significantly different except for 2:
 
 1. Canadian-Ayrshire
 2. Jersey-Guernsey
+
+****
+{{< pagebreak >}} 
 
 ## 2) A study was conducted to compare 3 treatments for patients with HIV. The response was a measure of change in CD4+ counts. There were n = 90 patients in each of the 3 treatment conditions. The sample means and MSE are given below, note that positive responses implying increasing counts (good) and negative responses imply decreasing counts (bad).
 
@@ -135,6 +138,7 @@ Based on the comparison between the critical & observed F-statistics, and the re
 ```{r}
 # Tukey's
 q_crit <- qtukey(p = 0.95, nmeans = 3, df = df_e)/sqrt(2)
+hiv_se <- sqrt(MSE)*sqrt(2/n_i)
 t.comp12 <- c((y_1 - y_2) - q_crit*hiv_se, 
               (y_1 - y_2) + q_crit*hiv_se)
 t.comp23 <- c((y_2 - y_3) - q_crit*hiv_se, 
@@ -151,7 +155,6 @@ For the Tukey's calculation, the 95% CI for pairwise comparisons 1 vs 2 and 1 vs
 # Bonferroni - 3 Levels of treatment, 3 possible pairwise comparisons
 J = 3
 bonf_alpha <- 1 - ((1 - 0.05)^(1/J))
-hiv_se <- sqrt(MSE)*sqrt(2/n_i)
 t_crit <- qt(p = 1 - bonf_alpha/2, df_e)
 b.comp12 <- c((y_1 - y_2) - t_crit*hiv_se, 
               (y_1 - y_2) + t_crit*hiv_se)
@@ -180,4 +183,135 @@ print(paste("p-value",cont_h_p))
 
 With a p-value < $\alpha$ = 0.05, the null hypothesis may be rejected. This implies the group mean for the average of treatments 1 & 2 is significantly different from the group mean for treatment 3.
 
-## 3)
+****
+{{< pagebreak >}} 
+
+## 3) Exercise 5.1 on page 99 of ELMR
+The dataset 'discoveries' lists the numbers of "great" inventions and scientific discoveries in each year from 1860 to 1959.
+### a) Plot the discoveries over time and comment on the trend, if any.
+```{r}
+plot(discoveries, ylab = "Number of Important Discoveries", 
+     las = 1)
+```
+The trend appears to have a sharp increase in number of "great" discoveries in the 1880's, followed by a volatile, but on average reduction in number of great discoveries over time.
+
+### b) Fit a Poisson response model with a constant term. Now compute the mean number of discoveries per year. What is the relationship between this mean and the coefficient seen in the model?
+```{r}
+df.d.p <- data.frame(discoveries)
+df.d.p <- df.d.p %>% mutate(year = 1860:1959)
+
+lm.d.p.null <- glm(discoveries ~ 1, family = "poisson", df.d.p)
+summary(lm.d.p.null)
+```
+
+```{r}
+mean.d.p <- mean(discoveries)
+
+print(paste("Model Intercept (beta_0):", lm.d.p.null$coefficients))
+print(paste("Mean Discoveries:", mean.d.p))
+```
+The coefficient & mean are related through a log-link function. Meaning, the coefficient is the log of the mean.
+
+### c) Use the deviance from the model to check whether the model fits the data. What does this say about whether the rate of discoveries is constant over time?
+```{r}
+chi_crit <- qchisq(0.95, df = 99, lower.tail = FALSE)
+pval.d.p <- 1 - pchisq(lm.d.p$deviance, df = 99)
+
+print(paste("Null Deviance: ", lm.d.p$deviance))
+print(paste("P-value: ", pval.d.p))
+```
+
+with a p-value less than $\alpha$ = 0.05, the deviance may be considered significant and the null hypothesis rejected. There is a dependency on year, or at least a difference across years that indicate discoveries were not constant across years.
+
+### d) Make a table of how many years had zero, one, two, three, etc. discoveries. Collapse eight or more into a single category. Under an appropriate Poisson distribution, calculate the expected number of years with each number of discoveries. Plot the observed against the expected using a different plotting character to denote the number of discoveries. How well do they agree?
+```{r}
+tbl.d.p <- as.data.frame(table(factor(discoveries, 
+                                      levels = 0:max(discoveries))))
+colnames(tbl.d.p) <- c("n_discoveries", "years")
+tbl.d.p$n_discoveries <- as.numeric(as.character(tbl.d.p$n_discoveries))
+
+tbl_0_7 <- tbl.d.p$years[1:8]
+tbl_8_plus <- sum(tbl.d.p$years[9:nrow(tbl.d.p)])
+full.tbl <- c(tbl_0_7, tbl_8_plus)
+
+lambda <- mean(discoveries)
+n_years <- length(discoveries)
+
+# Probabilities for 0-7, then 1 - P(X <= 7) for the "8+" category
+exp_probs <- c(dpois(0:7, lambda), 1 - ppois(7, lambda))
+expected <- exp_probs * n_years
+
+plot(full.tbl, expected, 
+     pch = c(as.character(0:7), "+"), 
+     col = "blue",
+     main = "Observed vs. Expected Years per Discovery Count",
+     xlab = "Observed Number of Years", 
+     ylab = "Expected Number of Years (Poisson)",
+     xlim = c(0, 25), ylim = c(0, 25))
+abline(0, 1, lty = 2, col = "red")
+```
+The Observed & Expected (based on a poisson model) number of discoveries, do follow a relatively consistent linear trend. While the observed counts are not perfectly in-line with the model, they do generally follow the linear path (linear as defined by the plot above).
+
+```{r}
+comparison <- data.frame(
+  Discoveries = c(0:7, "8+"),
+  Observed = full.tbl,
+  Expected = round(expected, 2)
+)
+comparison
+```
+
+
+### e) Use the Pearson's Chi-squared test to check whether the observed numbers are consistent with the expected numbers. Interpret the result.
+```{r}
+#| warning: false
+chi_test <- chisq.test(full.tbl, p = exp_probs)
+
+stat <- chi_test$statistic
+p_val_adj <- 1 - pchisq(stat, df = 7)
+
+cat("Chi-squared Statistic:", stat, "\n")
+cat("Adjusted P-value (df=7):", p_val_adj, "\n")
+```
+
+Given the p-value is less than $\alpha$ = 0.05, we may reject the null hypothesis and state that the observed values are NOT consistent with those expected from a poisson distribution. There are likely external factors or influential discoveries that impact future influential discoveries. Neither of these factors are accommodated in a Poisson model.
+
+### f) Fit a Poisson response model that is quadratic in the year. Test for the significance of the quadratic term. What does this say about the presence of a trend in discovery?
+```{r}
+quad_exp <- glm(discoveries ~ year + I(year^2), 
+                family = "poisson", 
+                data = df.d.p)
+summary(quad_exp)
+
+pois.lm <- glm(discoveries ~ year, 
+               family = "poisson", 
+               data = df.d.p)
+
+#Test explicitly by comparing models w/ and w/o the quadratic term
+anova(pois.lm, quad_exp)
+```
+
+The p-value above is < $\alpha$ = 0.05, which implies we may reject the null hypothesis that the reduced model more adequately fits the data as compared to the full model. The quadratic term should be included in the model. Including a quadratic term indicates there is some amount of curvature, or possibly parabolic form to a model that better fits the rate of discoveries by year.
+
+### g) Compute the predicted number of discoveries each year and show these predications as a line drawn over the data. Comment on what you see.
+```{r}
+df_disc <- data.frame(
+  count = as.numeric(discoveries),
+  year = 1860:1959
+)
+
+mod_quad <- glm(count ~ year + I(year^2), 
+                family = "poisson", 
+                data = df_disc)
+
+df_disc$pred <- predict(mod_quad, type = "response")
+
+ggplot(df_disc, aes(x = year, y = count)) +
+  geom_point() +
+  geom_line(aes(y = pred), color = "blue") +
+  labs(title = "Poisson Regression: Quadratic Trend of Discoveries",
+       x = "Year",
+       y = "Number of Discoveries") +
+  theme_minimal()
+```
+While there are still large "jumps" in number of discoveries in the decades of 1880's, 1910's, & 1920's, the quadratic model does capture the increase and gradual decrease in number of significant discoveries over time. i.e. the model captures the general shape, even if there are still potentially influential years.
