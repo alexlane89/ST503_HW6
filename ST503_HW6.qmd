@@ -15,6 +15,7 @@ library('faraway')
 library('lmtest')
 library('rpart')
 library('emmeans')
+library('MASS')
 ```
 ****
 {{< pagebreak >}} 
@@ -45,7 +46,6 @@ bf1 <- aov(Butterfat ~ Breed, data = new_bf)
 summary(bf1)
 ```
 The results of the Analysis of Variance model show that there is a statistically significant difference between the various breeds, but what it does not communicate is which breed pair-wise combinations are statistically significant.
-
 
 ### c) Check the diagnostics for your model.
 ```{r}
@@ -188,6 +188,7 @@ With a p-value < $\alpha$ = 0.05, the null hypothesis may be rejected. This impl
 
 ## 3) Exercise 5.1 on page 99 of ELMR
 The dataset 'discoveries' lists the numbers of "great" inventions and scientific discoveries in each year from 1860 to 1959.
+
 ### a) Plot the discoveries over time and comment on the trend, if any.
 ```{r}
 plot(discoveries, ylab = "Number of Important Discoveries", 
@@ -215,9 +216,9 @@ The coefficient & mean are related through a log-link function. Meaning, the coe
 ### c) Use the deviance from the model to check whether the model fits the data. What does this say about whether the rate of discoveries is constant over time?
 ```{r}
 chi_crit <- qchisq(0.95, df = 99, lower.tail = FALSE)
-pval.d.p <- 1 - pchisq(lm.d.p$deviance, df = 99)
+pval.d.p <- 1 - pchisq(lm.d.p.null$deviance, df = 99)
 
-print(paste("Null Deviance: ", lm.d.p$deviance))
+print(paste("Null Deviance: ", lm.d.p.null$deviance))
 print(paste("P-value: ", pval.d.p))
 ```
 
@@ -260,7 +261,6 @@ comparison <- data.frame(
 )
 comparison
 ```
-
 
 ### e) Use the Pearson's Chi-squared test to check whether the observed numbers are consistent with the expected numbers. Interpret the result.
 ```{r}
@@ -315,3 +315,92 @@ ggplot(df_disc, aes(x = year, y = count)) +
   theme_minimal()
 ```
 While there are still large "jumps" in number of discoveries in the decades of 1880's, 1910's, & 1920's, the quadratic model does capture the increase and gradual decrease in number of significant discoveries over time. i.e. the model captures the general shape, even if there are still potentially influential years.
+
+****
+{{< pagebreak >}} 
+
+## 4) Exercise 5.3 on page 99 - 100 of ELMR. Parts (a) - (e) only.
+The 'ships' dataset found in the MASS package gives the number of wave damage incidents and aggregate months of service for different types of ships broken down by year of construction and period of operation.
+
+### a) Examine the data for the period of operation 1960-1974 for ships constructed in the years 1975-1979. Why are there no damage incidents?
+There are no damage incidents in 1960-1974 for ships constructed in 1975-1979 because the ships did not yet exist. Those particular ships were not able to be damaged. This fact is also illustrated by the aggregate months of service equaling "0" for these observations.
+
+### b) Make a two-way table that shows the rate of damage incidents per 1000 months of aggregate service classified by type and year of construction. Comment on the table.
+```{r}
+ships_data <- data.frame(ships) %>%
+  mutate(onekm_service = service/1000,
+         Rate = incidents/onekm_service) %>%
+#filtering out data points with service life = 0
+  filter(service != 0)
+
+s.tbl <- xtabs(Rate ~ type + year, data = ships_data)
+s.tbl
+```
+Ship Type E has a much higher rate in the 1965-1969 time range. This may be because several of the observations' service times had not surpassed 1000 months, so the "per 1000 months of aggregate service" was projecting potential incidents when aggregate service did surpass 1000 months. To that end, the incident rate/1000 months of service for the final time range of 1975-1979 are lower than the rates for all types in the 1970-1975 time range.
+
+### c) Compute the rate of damage incidents per year for all cases where some service was recorded.
+```{r}
+ships_data2 <- data.frame(ships) %>%
+  mutate(Rate_Yr = incidents/(service/12)) %>%
+#filtering out data points with service life = 0
+  filter(service != 0)
+
+ships_data2
+```
+
+### d) Fit linear models with the observed rate of damage incidents as the response and the following three combinations of predictors: (i) All two-way interactions, (ii) main effects terms only (iii) null (no predictors). Make sure year is treated as a factor rather than numerical variable. Which of these three models is preferred?
+```{r}
+ships$type <- as.factor(ships$type)
+ships$year <- as.factor(ships$year)
+ships$period <- as.factor(ships$period)
+
+# (i) all two-way interactions
+s1.lm <- lm(Rate_Yr ~ .^2, data = ships_data2)
+
+# (ii) main effects terms only
+s2.lm <- lm(Rate_Yr ~ type + year + period + service, 
+             data = ships_data2)
+
+# (iii) null (no predictors)
+s3.lm <- lm(Rate_Yr ~ 1, data = ships_data2)
+
+ship_AIC <- abs(AIC(s3.lm, s2.lm, s1.lm))
+ship_AIC
+```
+
+The lowest AIC value model is model 2 - the main effects model. This model is preferred.
+
+### e) Fit a poisson response model for the number of incidents with the predictors: log of service, type, year and period. Test whether the parameter associated with the service term can be one. Explain why we are interested in such a test.
+```{r}
+s.pois <- glm(incidents ~ log(service) + type + year + period, 
+              family = "poisson", 
+              data = ships_data2)
+summary(s.pois)
+```
+
+Use the Wald test to test if the beta parameter associated with log of service can be 1.
+```{r}
+coef_summary <- summary(s.pois)$coefficients
+beta_log_service <- coef_summary["log(service)", "Estimate"]
+se_log_service <- coef_summary["log(service)", "Std. Error"]
+
+# Calculate Z-statistic for H0: beta = 1
+z_stat <- (beta_log_service - 1) / se_log_service
+p_value <- 2 * (1 - pnorm(abs(z_stat)))
+
+cat("\nCoefficient for log(service):", round(beta_log_service, 4), 
+    "\nStandard Error:", round(se_log_service, 4),
+    "\nP-value for H0 (beta = 1):", round(p_value, 4), "\n")
+```
+
+```{r}
+s2.pois <- glm(incidents ~ type + year + period, 
+               offset = log(service), 
+               family = "poisson", 
+               data = ships_data2)
+
+anova_test <- anova(s2.pois, s.pois, test = "Chisq")
+print(anova_test)
+```
+
+The p-value resulting from the ANOVA test is greater than $\alpha$ = 0.05. Thus, the null hypothesis fails to be rejected and the null hypothesis that $\beta_{0} = 1$ is acceptable for this dataset. The test to determine if $\beta_{0} = 1$ is relevant because a parameter value of 1 means there is a proportional relationship between the number of incidents and service time.
